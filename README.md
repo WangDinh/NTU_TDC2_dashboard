@@ -31,12 +31,17 @@ data/                 raw TDC 2.0 dataset
 ## Setup (one time)
 
 ```bash
-conda run -n ntu_cooling pip install -e .          # editable install of rack_forecast
-conda install -n ntu_cooling -y -c conda-forge streamlit plotly
+conda create -n ntu_cooling python=3.11 -y
+conda activate ntu_cooling
+pip install -r requirements.txt
+pip install torch --index-url https://download.pytorch.org/whl/cu126   # or /cpu for CPU-only
+pip install -e .                                    # editable install of rack_forecast
 ```
 
 `pip install -e .` makes `import rack_forecast` work from notebooks, scripts, and
-the dashboard regardless of the working directory.
+the dashboard regardless of the working directory. `torch` is installed separately
+because the CUDA-matched build isn't on plain PyPI — swap the index URL for your
+platform (see `requirements.txt` for the CPU-only alternative).
 
 ## Run an experiment
 

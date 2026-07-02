@@ -1,0 +1,14 @@
+numpy==2.3.1
+scipy==1.16.0
+pandas==3.0.3
+scikit-learn==1.9.0
+xgboost==3.2.0
+matplotlib==3.10.9
+tqdm==4.68.2
+joblib==1.5.3
+streamlit==1.58.0
+plotly==6.8.0
+
+# torch is CUDA-build-specific — install separately for your platform:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu126
+# (CPU-only: pip install torch --index-url https://download.pytorch.org/whl/cpu)
