@@ -48,7 +48,7 @@ platform (see `requirements.txt` for the CPU-only alternative).
 Edit the config at the top of `scripts/run_prediction.py`, then:
 
 ```bash
-conda run -n ntu_cooling python scripts/run_prediction.py
+python scripts/run_prediction.py
 ```
 
 or open `notebooks/prediction.ipynb` to run it step by step. Either way, artifacts
@@ -65,7 +65,7 @@ Key config knobs: `models`, `lookback`, `horizon`, `fast_mode` (target rack only
 ## Launch the dashboard
 
 ```bash
-conda run -n ntu_cooling streamlit run dashboard/app.py
+streamlit run dashboard/app.py
 ```
 
 Pages: **Raw Data** (sensor viewer), **Training Runs** (browse results), **Prediction
