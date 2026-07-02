@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 All Python work uses the **`ntu_cooling`** conda environment. The core code is an
 editable-installed package (`pip install -e .`), so `import rack_forecast` works
-from any directory.
+from any directory. First-time env setup (fresh clone) is in `README.md` —
+`pip install -r requirements.txt` for pinned deps, `torch` installed separately
+from its CUDA-matched index.
 
 ```bash
 conda run -n ntu_cooling python scripts/run_prediction.py
