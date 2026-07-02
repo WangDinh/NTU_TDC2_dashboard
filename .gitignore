@@ -1,0 +1,17 @@
+# Dataset (large, not to be pushed)
+data/
+
+# Training run artifacts (models, predictions, figures)
+results/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.ipynb_checkpoints/
+
+# Env / editors
+.venv/
+venv/
+.vscode/
+.idea/

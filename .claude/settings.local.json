@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(conda run *)",
+      "Bash(cd \"C:/Users/quang\" && conda run -n ntu_cooling python \"C:/Users/quang/AppData/Local/Temp/claude/D--Research-Proposal-BESS-code-NTU/99d4a75f-2672-46cd-9fda-d8fa2638a9f9/scratchpad/verify_io.py\")",
+      "Bash(python -c ' *)"
+    ]
+  }
+}

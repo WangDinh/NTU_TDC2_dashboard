@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rack_forecast"
+version = "0.1.0"
+description = "TDC 2.0 data-center rack power forecasting: data loading, model training, autoregressive evaluation, and a Streamlit dashboard."
+requires-python = ">=3.10"
+
+# Core deps are managed via the ntu_cooling conda env (torch, xgboost, sklearn,
+# pandas, matplotlib, tqdm, joblib). Listed here for documentation only.
+dependencies = []
+
+[tool.setuptools]
+# Flat layout: the package lives at ./rack_forecast (not under ./src).
+packages = ["rack_forecast", "rack_forecast.models"]
