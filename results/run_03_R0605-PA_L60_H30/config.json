@@ -1,0 +1,42 @@
+{
+  "target_rack": "R0605-PA",
+  "resample": "30s",
+  "lookback": 60,
+  "horizon": 30,
+  "models": [
+    "linear",
+    "xgboost",
+    "lstm",
+    "cnn1d",
+    "transformer"
+  ],
+  "dl_epochs": 30,
+  "fast_mode": true,
+  "train_days": null,
+  "predict_days": null,
+  "run_id": "run_03",
+  "n_features": 17,
+  "target_col": "R0605-PA__kW",
+  "train_months": "2022-09 \u2192 2023-01",
+  "test_month": "2023-02",
+  "feature_cols": [
+    "R0605-PA__kW",
+    "R0605-PA__V",
+    "R0605-PA__A",
+    "R0605-PA__PF",
+    "R0605-PA__Hz",
+    "THFT__temp_C",
+    "THFT__humidity_pct",
+    "THFM__temp_C",
+    "THFM__humidity_pct",
+    "THFB__temp_C",
+    "THFB__humidity_pct",
+    "THBB__temp_C",
+    "THBB__humidity_pct",
+    "THBM__temp_C",
+    "THBM__humidity_pct",
+    "THBT__temp_C",
+    "THBT__humidity_pct"
+  ],
+  "timestamp": "2026-07-04T12:24:38.105527"
+}
