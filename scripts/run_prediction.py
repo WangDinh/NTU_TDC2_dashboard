@@ -26,8 +26,11 @@ matplotlib.use('Agg')
 
 
 # ── edit me ────────────────────────────────────────────────────────────────
-TARGET = 'PA'                # a single rack, or 'PA'/'PB' to sweep that side
-SHARE_MODEL = True                 # True: one model pooled across the swept racks
+TARGET = 'R0605-PA'                # a single rack, or 'PA'/'PB' to sweep that side
+
+SHARE_MODEL = False
+# SHARE_MODEL setting for TARGET='PA'/'PB' (ignored for a single rack TARGET)
+# True: one model pooled across the swept racks / False: independent models per rack
 
 LOOKBACK = 60
 HORIZON = 30
@@ -35,10 +38,13 @@ MODELS = ['linear', 'xgboost', 'lstm', 'cnn1d', 'transformer']
 # e.g. ['linear','rf','xgboost','lstm','cnn1d','transformer']
 
 FAST_MODE = True
+# True = only loads the target rack's own PM/TH sensor columns
+# False = loads all racks' PM/TH sensor columns and SensorGW columns (182 features, process the whole facility)
+
 TRAIN_DAYS = None                  # None = full 5 training months
-PREDICT_DAYS = 1                   # None = full test month
+PREDICT_DAYS = None                   # None = full test month
 # names the output folder (rack is appended automatically)
-RUN_ID = 'run_all_02'
+RUN_ID = 'run_03'
 # ───────────────────────────────────────────────────────────────────────────
 
 
