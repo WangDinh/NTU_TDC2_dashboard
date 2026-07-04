@@ -28,6 +28,25 @@ results/              per-run artifacts (config, metrics, models, predictions, f
 data/                 raw TDC 2.0 dataset
 ```
 
+## Dataset
+
+TDC 2.0 (NTU air-cooled tropical data-center testbed) — 24 rack PDUs (PA/PB), 5
+SensorGW streams, 6 months (2022-09 → 2023-02), 30s sampling.
+
+Source: https://researchdata.ntu.edu.sg/dataset.xhtml?persistentId=doi:10.21979/N9/BLBQ2T
+
+Download the dataset from the link above and extract it so the folder layout is:
+
+```
+data/TDC2.0 Dataset/
+  R0501-PA/  R0501-PB/  ...  R0606-PA/  R0606-PB/
+  SensorGW-1/  SensorGW-2/  SensorGW-3/  SensorGW-4/  SensorGW-5/
+```
+
+`data/` is gitignored and not included in this repo — `rack_forecast/paths.py` resolves
+`DATA_ROOT` to `data/TDC2.0 Dataset/` relative to the project root, so this is the only
+required layout.
+
 ## Setup (one time)
 
 ```bash
