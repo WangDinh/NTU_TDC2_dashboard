@@ -33,7 +33,7 @@ SHARE_MODEL = False
 # True: one model pooled across the swept racks / False: independent models per rack
 
 LOOKBACK = 60
-HORIZON = 30
+HORIZON = 120
 MODELS = ['linear', 'xgboost', 'lstm', 'cnn1d', 'transformer']
 # e.g. ['linear','rf','xgboost','lstm','cnn1d','transformer']
 
@@ -44,7 +44,7 @@ FAST_MODE = True
 TRAIN_DAYS = None                  # None = full 5 training months
 PREDICT_DAYS = None                   # None = full test month
 # names the output folder (rack is appended automatically)
-RUN_ID = 'run_03'
+RUN_ID = 'run_1h'
 # ───────────────────────────────────────────────────────────────────────────
 
 

@@ -128,6 +128,19 @@ Build an `ExperimentConfig`, then `run_experiment(cfg)` (script/dashboard) or ru
 `horizon` (steps; 1 step = 30 s), `models`, `dl_epochs`, `fast_mode` (target rack only),
 `train_days`/`predict_days` (None = full; N = first N days for fast iteration/demo), `run_id`.
 
+**Memory risk with `fast_mode=False`:** full mode loads 182 features (all 24 racks'
+PM + target rack TH + all 5 SensorGW streams) vs. 17 for `fast_mode=True`.
+`make_supervised()` ([windowing.py](rack_forecast/windowing.py)) materializes the
+entire `(n_windows, lookback, n_feat)` array in one eager `np.array()` call — no
+chunking exists anywhere downstream. At the default `lookback=60` with unclipped
+`train_days=None` (~438K training rows), that array is ~19GB, which exceeds this
+machine's ~16.8GB RAM (same failure mode as the earlier 12-rack pooled-training
+OOM, just triggered by feature-count instead of rack-count). The rack-by-rack
+shared-model path only bounds memory *across racks* — it does nothing for a single
+rack's own array size. **Use `train_days`/`predict_days` clipping whenever running
+`fast_mode=False`** to stay within a safe array size (`fast_mode=True` at full data
+is ~1.8GB — safe by comparison).
+
 ### Models (`linear`, `rf`, `xgboost`, `lstm`, `cnn1d`, `transformer`)
 - `svr` excluded by default — too slow on CPU at scale (cuML is Linux-only).
 - `xgboost` + DL models use GPU (RTX 4060, CUDA 12.6); `linear`/`rf` on CPU.
@@ -184,6 +197,42 @@ or a phase (`'PA'`/`'PB'`) to sweep every rack on that side, via `racks_for(targ
     `config.json['racks']` (the pooled rack list). `predictions.npz` additionally
     stores a `window_racks` array (which rack each window came from).
 
+### Forecasting strategy: single_step vs multi_step (exploratory)
+
+The production pipeline (`evaluate()` in `evaluate.py`) is **single_step**
+(autoregressive/recursive): the model predicts one step, the full predicted
+feature vector is fed back in as if real, repeated `horizon` times — errors
+compound. `notebooks/direct_forecast_eda.ipynb` is a temporary, standalone
+notebook (no changes to `rack_forecast/`) testing an alternative, **multi_step**
+(direct) strategy: predict all `horizon` steps of the target in a single forward
+pass — no feedback loop, no compounding error, and since nothing needs to be fed
+back in, it only needs to predict the target column, not the full multi-output
+vector `single_step` requires.
+
+Result on rack R0605-PA (lookback=60/horizon=30, XGBoost only, `train_days=60`):
+`multi_step` won by a small margin (RMSE 0.01582 vs 0.01594, R2 0.323 vs 0.313),
+~4.5x faster inference (single forward pass vs. a 30-step rollout) but ~50% longer
+training (fitting a 30-output target is a bigger learning problem than a 17-output
+single-step target). Reused `XGBoostModel` directly for `multi_step` — it's
+generic to output width, so fitting it on a `(n, horizon)` target instead of
+`(n, n_feat)` just works with no model-class changes.
+
+**Status: exploratory only, not integrated into the production pipeline.** Scope
+was single rack/single horizon config/XGBoost only. Extending `multi_step` to the
+DL models (`lstm`/`cnn1d`/`transformer`) would need an output-layer size change
+(`n_feat` → `horizon`), unlike XGBoost/linear/rf which adapt to whatever `y` width
+they're fit on.
+
+### Feature-engineering comparison (exploratory)
+
+`notebooks/feature_eda.ipynb` — temporary, standalone (no changes to
+`rack_forecast/`), tests preprocessing variants against a raw-sensor baseline on
+rack R0605-PA via a shared `run_variant()` harness. Note: `run_variant()` trains
+whatever model is in `cfg.models[0]` (not hardcoded XGBoost) — check that field
+before trusting results. Gains from preprocessing were marginal overall;
+`delta_current_freq_remove` (5 features) trades a little accuracy for a large
+speed win. Exploratory only, not integrated into the production pipeline.
+
 ## Dashboard
 
 `conda run -n ntu_cooling streamlit run dashboard/app.py` — 4 pages: Raw Data (sensor
@@ -191,6 +240,12 @@ viewer, with a Side PA/PB dropdown — never overlays both), Training Runs (brow
 results/), Prediction Results (all windows from `predictions.npz`), Live Inference
 (load a model + scalers, pick a rack to infer on, forecast from a chosen day/hour/minute).
 `dashboard/app.py` adds its own dir to `sys.path` so `views` resolves under any launcher.
+
+Prediction Results also branches on shared vs. non-shared runs: if `predictions.npz`
+has a `window_racks` array (shared runs only), a **Rack** dropdown appears and filters
+every window/plot/metric down to the selected rack before anything is drawn — without
+it, a shared run's windows from every rack in the sweep get concatenated into one
+time series, which is unreadable.
 
 Live Inference's "Rack to infer on" branches on `config.json['shared_model']`:
 - Shared runs: dropdown lists exactly `cfg['racks']`; the freshly built dataset is
