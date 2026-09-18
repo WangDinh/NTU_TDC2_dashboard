@@ -93,17 +93,25 @@ rack_forecast/     core library (editable-installed package)
   paths.py         CWD-independent DATA_ROOT / RESULTS_ROOT (resolved from __file__)
   config.py        ExperimentConfig dataclass — every knob; .run_folder / .target_col
   data.py          load_agg_pm/load_th/load_gw + build_dataset(cfg)  ← single loader source
-  windowing.py     make_supervised()
+  windowing.py     make_supervised() + make_direct_supervised()/make_direct_test_windows()
   trainer.py       DEVICE, train_dl(), build_and_train()
-  evaluate.py      evaluate() (batched rollout), autoregressive_predict(), compute_metrics()
+  evaluate.py      evaluate() (batched rollout), evaluate_direct(), autoregressive_predict(),
+                   compute_metrics(), DivergenceError
   persistence.py   save/load model, predictions(.npz), scalers(.pkl), config, metrics; list_runs()
   plots.py         figure-returning helpers (notebook displays, pipeline saves)
   pipeline.py      prepare_data() (split+scale) + run_experiment() + save_results()
   models/          linear rf xgboost lstm cnn1d transformer  (svr.py kept, not in REGISTRY)
-notebooks/         eda.ipynb, prediction.ipynb  (playgrounds; import from rack_forecast)
+  pcnn/            Adapt-PCNN — separate return-air-temp model, see "PCNN" section below
+notebooks/         eda.ipynb, prediction.ipynb  (main pipeline playgrounds)
+                   direct_forecast_eda.ipynb, feature_eda.ipynb  (single_step/multi_step and
+                   preprocessing-variant exploration — see below)
+                   pcnn_mlp.ipynb  (PCNN entry point — see "PCNN" section)
+                   spic_data_export.ipynb  (exports data_for_spic/, unrelated utility)
 scripts/           run_prediction.py  (thin CLI: build cfg → run_experiment)
 dashboard/         app.py + views/{raw_data,runs,results,inference}.py  (Streamlit)
-results/           per-run artifacts
+results/           per-run artifacts (results/pcnn/ is separate, see "PCNN" section)
+data_for_spic/     generated exports for an external Single-Phase Immersion Cooling test
+                   rig — not part of the forecasting pipeline, see "PCNN" section
 ```
 
 **Key rule:** data-loading logic lives ONLY in `rack_forecast/data.py`; notebooks and
@@ -126,7 +134,13 @@ comparison, cell-level PM, anomaly detection, monthly energy, SensorGW plots. Fo
 Build an `ExperimentConfig`, then `run_experiment(cfg)` (script/dashboard) or run
 `notebooks/prediction.ipynb` step by step. Config fields: `target_rack`, `lookback`,
 `horizon` (steps; 1 step = 30 s), `models`, `dl_epochs`, `fast_mode` (target rack only),
-`train_days`/`predict_days` (None = full; N = first N days for fast iteration/demo), `run_id`.
+`train_days`/`predict_days` (None = full; N = first N days for fast iteration/demo), `run_id`,
+`strategy` (`'single_step'`/`'multi_step'`, see below), `direct_stride` (multi_step only).
+
+**Per-model failure isolation:** `run_experiment()` wraps each model's train+evaluate in
+try/except — one model failing (e.g. a `DivergenceError`, see below) no longer aborts the
+whole run; other models still complete, and the failure is recorded to
+`<run_folder>/failed_models.txt`. Only raises if *every* model in the run fails.
 
 **Memory risk with `fast_mode=False`:** full mode loads 182 features (all 24 racks'
 PM + target rack TH + all 5 SensorGW streams) vs. 17 for `fast_mode=True`.
@@ -197,31 +211,52 @@ or a phase (`'PA'`/`'PB'`) to sweep every rack on that side, via `racks_for(targ
     `config.json['racks']` (the pooled rack list). `predictions.npz` additionally
     stores a `window_racks` array (which rack each window came from).
 
-### Forecasting strategy: single_step vs multi_step (exploratory)
+### Forecasting strategy: single_step vs multi_step
 
-The production pipeline (`evaluate()` in `evaluate.py`) is **single_step**
-(autoregressive/recursive): the model predicts one step, the full predicted
-feature vector is fed back in as if real, repeated `horizon` times — errors
-compound. `notebooks/direct_forecast_eda.ipynb` is a temporary, standalone
-notebook (no changes to `rack_forecast/`) testing an alternative, **multi_step**
-(direct) strategy: predict all `horizon` steps of the target in a single forward
-pass — no feedback loop, no compounding error, and since nothing needs to be fed
-back in, it only needs to predict the target column, not the full multi-output
-vector `single_step` requires.
+`ExperimentConfig.strategy` (`'single_step'`, default, or `'multi_step'`) is a real
+pipeline option now, promoted from an earlier exploratory notebook
+(`notebooks/direct_forecast_eda.ipynb`, still present, no longer the only way to
+run this).
 
-Result on rack R0605-PA (lookback=60/horizon=30, XGBoost only, `train_days=60`):
-`multi_step` won by a small margin (RMSE 0.01582 vs 0.01594, R2 0.323 vs 0.313),
-~4.5x faster inference (single forward pass vs. a 30-step rollout) but ~50% longer
-training (fitting a 30-output target is a bigger learning problem than a 17-output
-single-step target). Reused `XGBoostModel` directly for `multi_step` — it's
-generic to output width, so fitting it on a `(n, horizon)` target instead of
-`(n, n_feat)` just works with no model-class changes.
+- **`single_step`** (autoregressive/recursive): `evaluate()` predicts one step,
+  feeds the full predicted feature vector back in as if real, repeats `horizon`
+  times — errors compound. This is what motivated `multi_step`'s existence: at
+  very long horizons (observed at `horizon=20160`, ≈2 weeks at 1-min resolution)
+  the rollout can diverge to `inf`. `evaluate()` now raises `DivergenceError`
+  (`evaluate.py`) as soon as predictions go non-finite, reporting the step it
+  happened at — instead of letting `inf`/`NaN` silently propagate into the scaler
+  and surface as an opaque sklearn error.
+- **`multi_step`** (direct): predicts all `horizon` steps of the target in a
+  single forward pass via `evaluate_direct()` — no feedback loop, so
+  `DivergenceError` is structurally impossible. Since nothing needs to be fed
+  back in, it only predicts the target column, not the full multi-output vector
+  `single_step` requires. Training windows come from
+  `windowing.make_direct_supervised()` (target-only future window, optionally
+  strided); test windows from `make_direct_test_windows()`, deliberately built to
+  mirror `evaluate()`'s window definition so `single_step`/`multi_step` runs
+  score on comparable windows. `models/{lstm,cnn1d,transformer}.py` each take an
+  `n_out` param (defaults to `n_feat`, settable to `horizon`) so only the final
+  layer's output width changes; `trainer.build_and_train()` and
+  `persistence.load_model()` both thread `n_out` through so a multi_step
+  checkpoint reloads with the matching layer shape. `linear`/`xgboost`/`rf` need
+  no changes — they size output from whatever `y` they're fit on.
+- **`direct_stride`** (multi_step only, default `None` = auto): stride between
+  overlapping training windows. `cfg.resolved_direct_stride(n_train_rows,
+  budget_bytes=2GiB)` auto-picks the smallest stride whose resulting
+  `(n_windows, horizon)` float32 target array fits a memory budget — same
+  category of fix as the earlier rack-pooling/`fast_mode=False` OOMs, applied to
+  multi_step's own target array this time.
+- **Not supported for shared/pooled runs**: `run_shared_experiment()` raises
+  `NotImplementedError` if `cfg.is_multi_step` — the rack-by-rack fine-tuning
+  path still assumes a single_step target layout. Use `SHARE_MODEL=False` (or
+  `strategy='single_step'`) for shared runs.
+- `run_name` appends a `_multistep` suffix when `cfg.is_multi_step`, so old
+  single_step result folders keep resolving identically.
 
-**Status: exploratory only, not integrated into the production pipeline.** Scope
-was single rack/single horizon config/XGBoost only. Extending `multi_step` to the
-DL models (`lstm`/`cnn1d`/`transformer`) would need an output-layer size change
-(`n_feat` → `horizon`), unlike XGBoost/linear/rf which adapt to whatever `y` width
-they're fit on.
+Earlier single-rack/XGBoost-only result from the original exploratory notebook
+(`R0605-PA`, lookback=60/horizon=30, `train_days=60`): `multi_step` won by a small
+margin (RMSE 0.01582 vs 0.01594, R2 0.323 vs 0.313), ~4.5x faster inference but
+~50% longer training — kept as a reference data point, not a general verdict.
 
 ### Feature-engineering comparison (exploratory)
 
@@ -232,6 +267,49 @@ whatever model is in `cfg.models[0]` (not hardcoded XGBoost) — check that fiel
 before trusting results. Gains from preprocessing were marginal overall;
 `delta_current_freq_remove` (5 features) trades a little accuracy for a large
 speed win. Exploratory only, not integrated into the production pipeline.
+
+## PCNN (Adapt-PCNN) — return-air temperature forecasting
+
+`rack_forecast/pcnn/` is a **separate, self-contained subpackage** — a different
+model family for a **different target** (return-air temperature `RA_T`, not rack
+power), deliberately isolated from the main pipeline: it only reuses raw loaders
+(`load_gw`/`load_agg_pm`/`_resampled`) from `rack_forecast.data`, never imports
+`config`/`trainer`/`evaluate`/`windowing`/pipeline logic, and writes to
+`results/pcnn/` (`PCNN_RESULTS_ROOT`) specifically so its runs don't show up in
+the power dashboard's `list_runs()`. It has its own local `DEVICE`,
+`compute_metrics`, and min-max `Normalizer` — duplicated on purpose rather than
+sharing the main pipeline's.
+
+"PCNN" = **Adapt-PCNN** (physics-consistent neural network), ported from the
+reference implementation at https://doi.org/10.1016/j.apenergy.2024.124637.
+`pcnn/module.py`'s `Adapt_PC_MLP` models one-step RA_T update as
+`RA_T + D/division_factor - cool_effect + heat_effect`, where `D` comes from an
+MLP and `coeff_a`/`coeff_b` (cooling/heating coefficients) from a softplus head —
+autoregressive state is only `self.last_D` (no RNN hidden state), which is the
+stated reason it stays stable over long rollouts, unlike `single_step`'s
+divergence issue above.
+
+**No CLI script exists for it** — `notebooks/pcnn_mlp.ipynb` is the only runnable
+entry point: build `PCNNConfig(...)` → `build_pcnn_dataset(cfg)` → `month_split` +
+`fit_normalizer` → `train_pcnn(...)` → `rollout_evaluate(...)` for PCNN's own
+metrics, plus `run_baselines(...)` which gives 5 black-box models
+(`linear`/`xgboost`/`lstm`/`cnn1d`/`transformer`, reusing the main package's DL
+model classes with `n_out=horizon`) the *same* information PCNN's rollout gets,
+scored on the same windows, as a fairness-matched comparison. No
+persistence/model-saving step exists yet (unlike the main pipeline).
+
+**Known gap:** `pyproject.toml`'s `[tool.setuptools] packages` list was not
+updated to include `rack_forecast.pcnn` — fine for the current in-place
+`pip install -e .` dev checkout, but worth fixing before this is ever installed
+as a built package elsewhere.
+
+`data_for_spic/` is unrelated to PCNN's modeling — it's a generated-data export
+for an external **Single-Phase Immersion Cooling** test rig (`notebooks/
+spic_data_export.ipynb`): rescales one rack/day's real power profile into a
+range a physical heater/coupon can dissipate (`power_load.csv`), pairs it with
+that day's outside temp/humidity as the boundary condition (`weather.csv`), and
+optionally exports a `.mat` window for MATLAB/Simulink. Not part of the
+forecasting pipeline; safe to ignore unless working on that export.
 
 ## Dashboard
 

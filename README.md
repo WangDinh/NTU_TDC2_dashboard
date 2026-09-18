@@ -1,7 +1,9 @@
 # TDC 2.0 Rack Power Forecasting
 
 Predict a data-center rack's aggregate power (kW) from its own and neighbouring
-sensor signals, and explore everything through a web dashboard.
+sensor signals, and explore everything through a web dashboard. A separate
+experimental model (`rack_forecast/pcnn/`, see below) forecasts return-air
+temperature instead of power.
 
 ## Layout
 
@@ -10,22 +12,28 @@ rack_forecast/        core library (installable package)
   paths.py            CWD-independent DATA_ROOT / RESULTS_ROOT
   config.py           ExperimentConfig — every knob in one dataclass
   data.py             loaders + build_dataset() (single source of truth)
-  windowing.py        make_supervised()
+  windowing.py        make_supervised() (+ direct/multi-step window builders)
   trainer.py          train_dl(), build_and_train(), DEVICE
-  evaluate.py         evaluate(), autoregressive_predict(), compute_metrics()
+  evaluate.py         evaluate(), evaluate_direct(), autoregressive_predict(), compute_metrics()
   persistence.py      save/load models, predictions, scalers, config, metrics
   plots.py            figure-returning plot helpers
   pipeline.py         prepare_data() + run_experiment() orchestration
   models/             linear, rf, xgboost, lstm, cnn1d, transformer
+  pcnn/               Adapt-PCNN — separate model, forecasts return-air temp, not power
 notebooks/
   eda.ipynb           dataset exploration playground
   prediction.ipynb    step-by-step forecasting playground
+  direct_forecast_eda.ipynb, feature_eda.ipynb   exploratory single/multi-step + preprocessing notebooks
+  pcnn_mlp.ipynb       Adapt-PCNN entry point (see rack_forecast/pcnn/)
+  spic_data_export.ipynb   exports data_for_spic/, unrelated utility for an external test rig
 scripts/
   run_prediction.py   CLI: edit config, run one experiment
 dashboard/
   app.py + views/     Streamlit app (raw data, runs, results, live inference)
-results/              per-run artifacts (config, metrics, models, predictions, figures)
+results/              per-run artifacts (config, metrics, models, predictions, figures);
+                       results/pcnn/ is separate, PCNN runs only
 data/                 raw TDC 2.0 dataset
+data_for_spic/        generated exports for an external cooling test rig (unrelated to forecasting)
 ```
 
 ## Dataset
@@ -79,7 +87,17 @@ config.json  metrics.csv  scalers.pkl  metrics_bar.png  all_models_vs_actual.png
 ```
 
 Key config knobs: `models`, `lookback`, `horizon`, `fast_mode` (target rack only),
-`train_days` / `predict_days` (clip for fast iteration or demos).
+`train_days` / `predict_days` (clip for fast iteration or demos), `strategy`
+(`'single_step'` recursive rollout, default, or `'multi_step'` direct — predicts
+the whole horizon in one forward pass; safer at very long horizons since
+`single_step` rollouts can diverge, but not supported for shared/pooled runs).
+
+## PCNN (experimental)
+
+`rack_forecast/pcnn/` is a separate, physics-consistent model (Adapt-PCNN)
+forecasting return-air temperature, isolated from the power-forecasting code
+above (own results folder, own loaders, no shared config/pipeline). Run it via
+`notebooks/pcnn_mlp.ipynb` — no CLI script exists for it yet.
 
 ## Launch the dashboard
 
