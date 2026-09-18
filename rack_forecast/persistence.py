@@ -41,17 +41,22 @@ def save_model(name, model, out_dir):
         joblib.dump(model.model, models_dir / f'{name}.pkl')
 
 
-def load_model(name, out_dir, n_feat=None, lookback=None):
-    """Reconstruct a saved model. DL models need n_feat (and lookback for cnn1d)."""
+def load_model(name, out_dir, n_feat=None, lookback=None, n_out=None):
+    """Reconstruct a saved model. DL models need n_feat (and lookback for cnn1d).
+
+    `n_out` must match the width the model was TRAINED with or load_state_dict
+    will reject the final layer's shape: pass horizon for a multi_step run
+    (config.json['strategy'] == 'multi_step'), and leave it None otherwise.
+    """
     models_dir = Path(out_dir) / 'models'
     if name in DL_MODELS:
         import torch
         from .models.lstm import LSTMModel
         from .models.cnn1d import CNN1DModel
         from .models.transformer import TransformerModel
-        arch = {'lstm': LSTMModel(n_feat),
-                'cnn1d': CNN1DModel(n_feat, lookback),
-                'transformer': TransformerModel(n_feat)}[name]
+        arch = {'lstm': LSTMModel(n_feat, n_out=n_out),
+                'cnn1d': CNN1DModel(n_feat, lookback, n_out=n_out),
+                'transformer': TransformerModel(n_feat, n_out=n_out)}[name]
         arch.load_state_dict(torch.load(models_dir / f'{name}.pt', map_location='cpu'))
         arch.eval()
         return arch
