@@ -3,12 +3,17 @@ import torch.nn as nn
 
 
 class LSTMModel(nn.Module):
-    """LSTM → linear head. Input: (batch, lookback, n_feat)."""
+    """LSTM → linear head. Input: (batch, lookback, n_feat).
 
-    def __init__(self, n_feat, hidden=64, layers=2):
+    Output width is `n_out`, defaulting to n_feat (single_step: forecast the
+    whole next feature vector). The multi_step strategy passes n_out=horizon
+    to forecast the target's whole future in one pass instead.
+    """
+
+    def __init__(self, n_feat, hidden=64, layers=2, n_out=None):
         super().__init__()
         self.lstm = nn.LSTM(n_feat, hidden, layers, batch_first=True, dropout=0.1)
-        self.fc   = nn.Linear(hidden, n_feat)
+        self.fc   = nn.Linear(hidden, n_out if n_out is not None else n_feat)
 
     def forward(self, x):
         out, _ = self.lstm(x)

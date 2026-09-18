@@ -242,6 +242,12 @@ def run_shared_experiment(cfg, racks, save=True, make_plots=True):
     """
     from .evaluate import evaluate, compute_metrics
 
+    if cfg.is_multi_step:
+        raise NotImplementedError(
+            "strategy='multi_step' is not supported for shared-model runs — "
+            '_train_rack_by_rack() continues training on a single_step target '
+            'layout. Use SHARE_MODEL=False, or strategy=\'single_step\'.')
+
     print(f'Building dataset for {len(racks)} racks: {racks}')
     per_rack, feature_cols, scaler, target_idx, n_feat = _prepare_pooled(cfg, racks)
 
@@ -331,7 +337,8 @@ def run_experiment(cfg, data=None, save=True, make_plots=True):
         prep : the PreparedData bundle (handy for further inspection)
     """
     from .trainer import build_and_train                 # lazy: pulls in torch
-    from .evaluate import evaluate, compute_metrics
+    from .evaluate import evaluate, evaluate_direct, compute_metrics
+    from .windowing import make_direct_supervised
 
     # ── data ───────────────────────────────────────────────────────────
     if data is None:
@@ -343,26 +350,62 @@ def run_experiment(cfg, data=None, save=True, make_plots=True):
     print(f'Train: {len(prep.X_train):,}  Test: {len(prep.X_test):,}  '
           f'Features: {prep.n_feat}')
 
-    X_3d, y_sup = make_supervised(prep.X_train, prep.y_train, cfg.lookback)
+    # ── window according to the forecasting strategy ───────────────────
+    if cfg.is_multi_step:
+        stride = cfg.resolved_direct_stride(len(prep.X_train))
+        X_3d, y_sup = make_direct_supervised(
+            prep.X_train, prep.target_idx, cfg.lookback, cfg.horizon, stride=stride)
+        n_out = cfg.horizon
+        print(f'Strategy: multi_step (direct)  stride={stride}  '
+              f'train windows={len(X_3d):,}  y={y_sup.shape}')
+    else:
+        X_3d, y_sup = make_supervised(prep.X_train, prep.y_train, cfg.lookback)
+        n_out = None
+        print(f'Strategy: single_step (recursive rollout, {cfg.horizon} steps)')
 
     # ── train + evaluate each model ────────────────────────────────────
-    trained, results = {}, {}
+    # One model failing (e.g. a diverged long-horizon rollout) must not cost
+    # the whole run — every other model still trains, scores, and saves.
+    trained, results, failed = {}, {}, {}
     for name in cfg.models:
         print(f'[{name}] training...')
-        model = build_and_train(name, X_3d, y_sup, cfg.lookback, prep.n_feat,
-                                dl_epochs=cfg.dl_epochs)
-        preds, actuals = evaluate(model, prep.X_test, prep.y_test,
-                                  cfg.lookback, cfg.horizon,
-                                  prep.target_idx, prep.scaler, prep.n_feat)
-        metrics = compute_metrics(actuals, preds)
+        try:
+            model = build_and_train(name, X_3d, y_sup, cfg.lookback, prep.n_feat,
+                                    dl_epochs=cfg.dl_epochs, n_out=n_out)
+            if cfg.is_multi_step:
+                preds, actuals = evaluate_direct(
+                    model, prep.X_test, cfg.lookback, cfg.horizon,
+                    prep.target_idx, prep.scaler, prep.n_feat)
+            else:
+                preds, actuals = evaluate(model, prep.X_test, prep.y_test,
+                                          cfg.lookback, cfg.horizon,
+                                          prep.target_idx, prep.scaler, prep.n_feat)
+            metrics = compute_metrics(actuals, preds)
+        except Exception as exc:
+            failed[name] = f'{type(exc).__name__}: {exc}'
+            print(f'  FAILED — {failed[name]}')
+            continue
         trained[name] = model
         results[name] = {'preds': preds, 'actuals': actuals, 'metrics': metrics}
         print(f'  MAE={metrics["MAE"]:.4f}  RMSE={metrics["RMSE"]:.4f}  R2={metrics["R2"]:.4f}')
+
+    if not results:
+        raise RuntimeError(
+            'every model failed, nothing to save:\n  '
+            + '\n  '.join(f'{n}: {e}' for n, e in failed.items())
+        )
 
     metrics_df = pd.DataFrame({n: r['metrics'] for n, r in results.items()}).T.round(4)
 
     if save:
         save_results(cfg, prep, trained, results, metrics_df, make_plots=make_plots)
+        if failed:
+            (cfg.run_folder / 'failed_models.txt').write_text(
+                '\n'.join(f'{n}\t{e}' for n, e in failed.items()) + '\n')
+
+    if failed:
+        print(f'\n{len(failed)} of {len(cfg.models)} models failed: '
+              f'{", ".join(failed)} (see failed_models.txt)')
 
     print(f'\nDone. Artifacts in {cfg.run_folder}')
     return results, metrics_df, prep
