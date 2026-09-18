@@ -33,8 +33,19 @@ SHARE_MODEL = False
 # True: one model pooled across the swept racks / False: independent models per rack
 
 LOOKBACK = 60
-HORIZON = 120
-MODELS = ['linear', 'xgboost', 'lstm', 'cnn1d', 'transformer']
+HORIZON = 20160  # 20160
+
+STRATEGY = 'single_step'
+# 'single_step': predict 1 step, feed it back, repeat HORIZON times (errors
+#     compound — diverged to inf at HORIZON=20160).
+# 'multi_step':  predict all HORIZON steps of the target in one pass (no
+#     feedback loop, so no compounding). Writes to a '..._multistep' folder.
+DIRECT_STRIDE = None
+# multi_step only. None = auto-pick a stride that keeps the (n_windows, HORIZON)
+# training target under ~2GB. 1 = every overlapping window — fine at small
+# HORIZON (~53MB at 30, ~211MB at 120) but ~5GB at 2880 and ~34GB at 20160.
+# Ignored when STRATEGY='single_step'.
+MODELS = ['linear', 'lstm', 'cnn1d', 'transformer']
 # e.g. ['linear','rf','xgboost','lstm','cnn1d','transformer']
 
 FAST_MODE = True
@@ -44,7 +55,7 @@ FAST_MODE = True
 TRAIN_DAYS = None                  # None = full 5 training months
 PREDICT_DAYS = None                   # None = full test month
 # names the output folder (rack is appended automatically)
-RUN_ID = 'run_1h'
+RUN_ID = 'run_1w'  # e.g. 'run_1w_multistep'
 # ───────────────────────────────────────────────────────────────────────────
 
 
@@ -64,7 +75,7 @@ if __name__ == '__main__':
         cfg = ExperimentConfig(
             lookback=LOOKBACK, horizon=HORIZON, models=MODELS,
             fast_mode=FAST_MODE, train_days=TRAIN_DAYS, predict_days=PREDICT_DAYS,
-            run_id=RUN_ID,
+            run_id=RUN_ID, strategy=STRATEGY, direct_stride=DIRECT_STRIDE,
         )
         _, metrics_df, _ = run_shared_experiment(cfg, racks)
         print(metrics_df)
@@ -81,6 +92,8 @@ if __name__ == '__main__':
                 train_days=TRAIN_DAYS,
                 predict_days=PREDICT_DAYS,
                 run_id=RUN_ID,
+                strategy=STRATEGY,
+                direct_stride=DIRECT_STRIDE,
             )
             print(f'\n=== {rack} ===')
             _, metrics_df, _ = run_experiment(cfg)

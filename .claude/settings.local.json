@@ -6,7 +6,18 @@
       "Bash(python -c ' *)",
       "mcp__visualize__read_me",
       "Bash(git add *)",
-      "Bash(git commit -q -m '@ *)"
+      "Bash(git commit -q -m '@ *)",
+      "Bash(git fetch *)",
+      "Bash(git ls-tree *)",
+      "Bash(git rebase *)",
+      "Bash(git stash *)",
+      "Bash(git push *)",
+      "Bash(git cherry *)",
+      "Bash(git branch *)",
+      "Bash(conda run -n ntu_cooling python -c ' *)",
+      "Bash(grep -v \"^$\")",
+      "PowerShell(Get-Process python -ErrorAction SilentlyContinue | Select-Object Id,CPU,@{N='RAM_GB';E={[math]::Round\\($_.WorkingSet64/1GB,2\\)}},StartTime | Format-Table -AutoSize)",
+      "Bash(cd \"D:/Research/Proposal/BESS/code/Adaptive-PCNN\" 2>/dev/null && echo \"=== exists ===\" && find . -maxdepth 2 -type f | head -60 || echo \"PATH NOT FOUND\")"
     ]
   }
 }

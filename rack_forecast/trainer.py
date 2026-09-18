@@ -88,17 +88,21 @@ def train_dl(model, X_3d, y, epochs=30, lr=1e-3, batch=256, val_frac=0.1, patien
 
 # ── dispatcher ─────────────────────────────────────────────────────────────
 
-def build_and_train(name, X_3d, y, lookback, n_feat, dl_epochs=30):
+def build_and_train(name, X_3d, y, lookback, n_feat, dl_epochs=30, n_out=None):
     """Train model `name` and return the fitted object.
 
     Every returned model exposes .predict_step(window) and .predict_batch(windows)
     working in SCALED space (see rack_forecast/models/*.py).
+
+    `n_out` sets the DL models' output width; None keeps the single_step default
+    of n_feat. The multi_step strategy passes horizon. sklearn/XGBoost models
+    need no equivalent — they size their output from whatever `y` they are fit on.
     """
     if name in DL_MODELS:
         arch = {
-            'lstm': lambda: LSTMModel(n_feat),
-            'cnn1d': lambda: CNN1DModel(n_feat, lookback),
-            'transformer': lambda: TransformerModel(n_feat),
+            'lstm': lambda: LSTMModel(n_feat, n_out=n_out),
+            'cnn1d': lambda: CNN1DModel(n_feat, lookback, n_out=n_out),
+            'transformer': lambda: TransformerModel(n_feat, n_out=n_out),
         }[name]()
         return train_dl(arch, X_3d, y, epochs=dl_epochs)
 

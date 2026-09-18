@@ -3,9 +3,14 @@ import torch.nn as nn
 
 
 class CNN1DModel(nn.Module):
-    """Two Conv1D layers → flatten → linear head. Input: (batch, lookback, n_feat)."""
+    """Two Conv1D layers → flatten → linear head. Input: (batch, lookback, n_feat).
 
-    def __init__(self, n_feat, lookback, filters=64, kernel=3):
+    Output width is `n_out`, defaulting to n_feat (single_step: forecast the
+    whole next feature vector). The multi_step strategy passes n_out=horizon
+    to forecast the target's whole future in one pass instead.
+    """
+
+    def __init__(self, n_feat, lookback, filters=64, kernel=3, n_out=None):
         super().__init__()
         self.conv = nn.Sequential(
             nn.Conv1d(n_feat, filters, kernel, padding=kernel // 2),
@@ -13,7 +18,7 @@ class CNN1DModel(nn.Module):
             nn.Conv1d(filters, filters, kernel, padding=kernel // 2),
             nn.ReLU(),
         )
-        self.fc = nn.Linear(filters * lookback, n_feat)
+        self.fc = nn.Linear(filters * lookback, n_out if n_out is not None else n_feat)
 
     def forward(self, x):          # x: (B, L, F)
         x = x.permute(0, 2, 1)    # (B, F, L)
