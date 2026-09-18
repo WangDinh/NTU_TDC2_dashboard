@@ -3,16 +3,21 @@ import torch.nn as nn
 
 
 class TransformerModel(nn.Module):
-    """TransformerEncoder → linear head. Input: (batch, lookback, n_feat)."""
+    """TransformerEncoder → linear head. Input: (batch, lookback, n_feat).
 
-    def __init__(self, n_feat, d_model=64, nhead=4, layers=2):
+    Output width is `n_out`, defaulting to n_feat (single_step: forecast the
+    whole next feature vector). The multi_step strategy passes n_out=horizon
+    to forecast the target's whole future in one pass instead.
+    """
+
+    def __init__(self, n_feat, d_model=64, nhead=4, layers=2, n_out=None):
         super().__init__()
         self.proj = nn.Linear(n_feat, d_model)
         enc_layer = nn.TransformerEncoderLayer(
             d_model, nhead, dim_feedforward=128, dropout=0.1, batch_first=True
         )
         self.enc = nn.TransformerEncoder(enc_layer, num_layers=layers)
-        self.fc  = nn.Linear(d_model, n_feat)
+        self.fc  = nn.Linear(d_model, n_out if n_out is not None else n_feat)
 
     def forward(self, x):
         x = self.proj(x)

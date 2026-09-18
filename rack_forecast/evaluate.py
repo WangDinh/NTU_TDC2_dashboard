@@ -13,6 +13,17 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from tqdm import tqdm
 
 
+class DivergenceError(RuntimeError):
+    """A rollout blew up: predictions went non-finite before the horizon was reached.
+
+    Long recursive rollouts feed each prediction back in as input, so error
+    compounds multiplicatively. Models with unbounded outputs (linear, the DL
+    models) can overflow float32 entirely — observed on cnn1d/lstm at
+    horizon=2880. Raised instead of letting `inf` reach the scaler, where it
+    surfaces as an opaque sklearn "Input contains infinity" ValueError.
+    """
+
+
 # ── shared inverse-scaling helper ───────────────────────────────────────────
 
 def _inverse_target(values_scaled, scaler, target_col_idx, n_feat):
@@ -85,6 +96,15 @@ def evaluate(model, X_test, y_test, lookback, horizon, target_col_idx, scaler, n
             preds = np.array([model.predict_step(windows[i][np.newaxis])
                               for i in range(n_windows)], dtype=np.float32)
 
+        # Catch a blown-up rollout here, at the step it happens, rather than
+        # letting inf/NaN propagate into the scaler hundreds of steps later.
+        if not np.isfinite(preds).all():
+            raise DivergenceError(
+                f'rollout diverged at step {step + 1}/{horizon}: predictions '
+                f'went non-finite ({np.count_nonzero(~np.isfinite(preds))} of '
+                f'{preds.size} values)'
+            )
+
         all_preds_s[:, step] = preds[:, target_col_idx]
 
         # Slide every window forward one step, feeding the FULL predicted vector back.
@@ -93,6 +113,29 @@ def evaluate(model, X_test, y_test, lookback, horizon, target_col_idx, scaler, n
     # Back to original units for reporting (target column only).
     preds_orig   = _inverse_target(all_preds_s.ravel(), scaler, target_col_idx, n_feat)
     actuals_orig = _inverse_target(actuals_s.ravel(), scaler, target_col_idx, n_feat)
+    return preds_orig, actuals_orig
+
+
+# ── direct (multi_step) evaluation ─────────────────────────────────────────
+
+def evaluate_direct(model, X_test, lookback, horizon, target_col_idx, scaler, n_feat):
+    """Score a multi_step model: one forward pass per window, no rollout.
+
+    Returns the SAME contract as `evaluate()` — (preds, actuals) as flat arrays
+    in original units, laid out window-by-window so `.reshape(n_windows,
+    horizon)` recovers them — so saving, plotting and the dashboard need no
+    changes to read a multi_step run.
+
+    There is no feedback loop here, so `DivergenceError` is structurally
+    impossible: the model never consumes its own output.
+    """
+    from .windowing import make_direct_test_windows
+
+    X_win, y_win, _ = make_direct_test_windows(X_test, target_col_idx, lookback, horizon)
+    preds_s = np.asarray(model.predict_batch(X_win), dtype=np.float32)   # (n_windows, horizon)
+
+    preds_orig   = _inverse_target(preds_s.ravel(), scaler, target_col_idx, n_feat)
+    actuals_orig = _inverse_target(y_win.ravel(), scaler, target_col_idx, n_feat)
     return preds_orig, actuals_orig
 
 
