@@ -221,8 +221,8 @@ run this).
 - **`single_step`** (autoregressive/recursive): `evaluate()` predicts one step,
   feeds the full predicted feature vector back in as if real, repeats `horizon`
   times — errors compound. This is what motivated `multi_step`'s existence: at
-  very long horizons (observed at `horizon=20160`, ≈2 weeks at 1-min resolution)
-  the rollout can diverge to `inf`. `evaluate()` now raises `DivergenceError`
+  very long horizons (observed at `horizon=20160` = 1 week at the default 30s
+  resample) the rollout can diverge to `inf`. `evaluate()` now raises `DivergenceError`
   (`evaluate.py`) as soon as predictions go non-finite, reporting the step it
   happened at — instead of letting `inf`/`NaN` silently propagate into the scaler
   and surface as an opaque sklearn error.
@@ -257,6 +257,27 @@ Earlier single-rack/XGBoost-only result from the original exploratory notebook
 (`R0605-PA`, lookback=60/horizon=30, `train_days=60`): `multi_step` won by a small
 margin (RMSE 0.01582 vs 0.01594, R2 0.323 vs 0.313), ~4.5x faster inference but
 ~50% longer training — kept as a reference data point, not a general verdict.
+
+### Horizon-sweep runs in `results/` (what's actually there)
+
+All `R0605-PA`, `lookback=60`, `resample=30s`, `train_days=None`. **These are NOT
+one consistent method across horizons** — check `config.json['strategy']` (and the
+`_multistep` folder suffix) before quoting any of these side by side:
+
+| Horizon | single_step folder | multi_step folder |
+|---|---|---|
+| 15 min (H=30) | `run_03_..._H30` (all 5 models) | — none |
+| 1 hour (H=120) | `run_1h_..._H120` | `run_1h_..._H120_multistep` (all 5) |
+| 1 day (H=2880) | `run_1d_..._H2880` | `run_1d_..._H2880_multistep` (**no xgboost**) |
+| 1 week (H=20160) | `run_1w_..._H20160` (**no cnn1d** — diverged) | `run_1w_..._H20160_multistep` (**no xgboost**) |
+
+Two gaps to know about when assembling comparison tables:
+- **xgboost is absent from the 1d/1w multistep runs** — it was dropped from
+  `MODELS` in `scripts/run_prediction.py` before those ran. Filling those cells
+  from the single_step folder silently mixes strategies within a row.
+- **cnn1d has no 1-week single_step result** — `DivergenceError: rollout diverged
+  at step 1220/20160` (recorded in that run's `failed_models.txt`). Only the
+  multistep value exists for that cell.
 
 ### Feature-engineering comparison (exploratory)
 
