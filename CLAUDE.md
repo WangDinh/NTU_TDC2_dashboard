@@ -13,7 +13,7 @@ from its CUDA-matched index.
 ```bash
 conda run -n ntu_cooling python scripts/run_prediction.py
 conda run -n ntu_cooling streamlit run dashboard/app.py
-conda run -n ntu_cooling jupyter nbconvert --to notebook --execute --inplace notebooks/prediction.ipynb \
+conda run -n ntu_cooling jupyter nbconvert --to notebook --execute --inplace notebooks/02_prediction.ipynb \
   --ExecutePreprocessor.timeout=900 --ExecutePreprocessor.kernel_name=ntu_cooling
 ```
 
@@ -102,11 +102,12 @@ rack_forecast/     core library (editable-installed package)
   pipeline.py      prepare_data() (split+scale) + run_experiment() + save_results()
   models/          linear rf xgboost lstm cnn1d transformer  (svr.py kept, not in REGISTRY)
   pcnn/            Adapt-PCNN — separate return-air-temp model, see "PCNN" section below
-notebooks/         eda.ipynb, prediction.ipynb  (main pipeline playgrounds)
-                   direct_forecast_eda.ipynb, feature_eda.ipynb  (single_step/multi_step and
-                   preprocessing-variant exploration — see below)
-                   pcnn_mlp.ipynb  (PCNN entry point — see "PCNN" section)
-                   spic_data_export.ipynb  (exports data_for_spic/, unrelated utility)
+notebooks/         numbered in workflow order:
+                   01_eda.ipynb, 02_prediction.ipynb  (main pipeline playgrounds)
+                   03_feature_eda.ipynb, 04_direct_forecast_eda.ipynb  (preprocessing-variant
+                   and single_step/multi_step exploration — see below)
+                   05_pcnn_mlp.ipynb  (PCNN entry point — see "PCNN" section)
+                   06_spic_data_export.ipynb  (exports data_for_spic/, unrelated utility)
 scripts/           run_prediction.py  (thin CLI: build cfg → run_experiment)
 dashboard/         app.py + views/{raw_data,runs,results,inference}.py  (Streamlit)
 results/           per-run artifacts (results/pcnn/ is separate, see "PCNN" section)
@@ -126,13 +127,13 @@ mini-batch at a time to `DEVICE` (train and validation loops both use a
 
 ## EDA notebook
 
-**`notebooks/eda.ipynb`** — 10 sections: rack PM time-series, TH sensors (PA+PB), cross-rack
+**`notebooks/01_eda.ipynb`** — 10 sections: rack PM time-series, TH sensors (PA+PB), cross-rack
 comparison, cell-level PM, anomaly detection, monthly energy, SensorGW plots. Focus rack `R0605-PA/PB`.
 
 ## Prediction pipeline
 
 Build an `ExperimentConfig`, then `run_experiment(cfg)` (script/dashboard) or run
-`notebooks/prediction.ipynb` step by step. Config fields: `target_rack`, `lookback`,
+`notebooks/02_prediction.ipynb` step by step. Config fields: `target_rack`, `lookback`,
 `horizon` (steps; 1 step = 30 s), `models`, `dl_epochs`, `fast_mode` (target rack only),
 `train_days`/`predict_days` (None = full; N = first N days for fast iteration/demo), `run_id`,
 `strategy` (`'single_step'`/`'multi_step'`, see below), `direct_stride` (multi_step only).
@@ -215,7 +216,7 @@ or a phase (`'PA'`/`'PB'`) to sweep every rack on that side, via `racks_for(targ
 
 `ExperimentConfig.strategy` (`'single_step'`, default, or `'multi_step'`) is a real
 pipeline option now, promoted from an earlier exploratory notebook
-(`notebooks/direct_forecast_eda.ipynb`, still present, no longer the only way to
+(`notebooks/04_direct_forecast_eda.ipynb`, still present, no longer the only way to
 run this).
 
 - **`single_step`** (autoregressive/recursive): `evaluate()` predicts one step,
@@ -281,7 +282,7 @@ Two gaps to know about when assembling comparison tables:
 
 ### Feature-engineering comparison (exploratory)
 
-`notebooks/feature_eda.ipynb` — temporary, standalone (no changes to
+`notebooks/03_feature_eda.ipynb` — temporary, standalone (no changes to
 `rack_forecast/`), tests preprocessing variants against a raw-sensor baseline on
 rack R0605-PA via a shared `run_variant()` harness. Note: `run_variant()` trains
 whatever model is in `cfg.models[0]` (not hardcoded XGBoost) — check that field
@@ -310,7 +311,7 @@ autoregressive state is only `self.last_D` (no RNN hidden state), which is the
 stated reason it stays stable over long rollouts, unlike `single_step`'s
 divergence issue above.
 
-**No CLI script exists for it** — `notebooks/pcnn_mlp.ipynb` is the only runnable
+**No CLI script exists for it** — `notebooks/05_pcnn_mlp.ipynb` is the only runnable
 entry point: build `PCNNConfig(...)` → `build_pcnn_dataset(cfg)` → `month_split` +
 `fit_normalizer` → `train_pcnn(...)` → `rollout_evaluate(...)` for PCNN's own
 metrics, plus `run_baselines(...)` which gives 5 black-box models
@@ -326,7 +327,7 @@ as a built package elsewhere.
 
 `data_for_spic/` is unrelated to PCNN's modeling — it's a generated-data export
 for an external **Single-Phase Immersion Cooling** test rig (`notebooks/
-spic_data_export.ipynb`): rescales one rack/day's real power profile into a
+06_spic_data_export.ipynb`): rescales one rack/day's real power profile into a
 range a physical heater/coupon can dissipate (`power_load.csv`), pairs it with
 that day's outside temp/humidity as the boundary condition (`weather.csv`), and
 optionally exports a `.mat` window for MATLAB/Simulink. Not part of the

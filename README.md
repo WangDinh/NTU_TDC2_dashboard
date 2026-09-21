@@ -20,12 +20,13 @@ rack_forecast/        core library (installable package)
   pipeline.py         prepare_data() + run_experiment() orchestration
   models/             linear, rf, xgboost, lstm, cnn1d, transformer
   pcnn/               Adapt-PCNN — separate model, forecasts return-air temp, not power
-notebooks/
-  eda.ipynb           dataset exploration playground
-  prediction.ipynb    step-by-step forecasting playground
-  direct_forecast_eda.ipynb, feature_eda.ipynb   exploratory single/multi-step + preprocessing notebooks
-  pcnn_mlp.ipynb       Adapt-PCNN entry point (see rack_forecast/pcnn/)
-  spic_data_export.ipynb   exports data_for_spic/, unrelated utility for an external test rig
+notebooks/            (numbered in workflow order)
+  01_eda.ipynb                  dataset exploration playground
+  02_prediction.ipynb           step-by-step forecasting playground
+  03_feature_eda.ipynb          preprocessing-variant comparison (exploratory)
+  04_direct_forecast_eda.ipynb  single_step vs multi_step comparison (exploratory)
+  05_pcnn_mlp.ipynb             Adapt-PCNN entry point (see rack_forecast/pcnn/)
+  06_spic_data_export.ipynb     exports data_for_spic/, unrelated utility for an external test rig
 scripts/
   run_prediction.py   CLI: edit config, run one experiment
 dashboard/
@@ -78,7 +79,7 @@ Edit the config at the top of `scripts/run_prediction.py`, then:
 python scripts/run_prediction.py
 ```
 
-or open `notebooks/prediction.ipynb` to run it step by step. Either way, artifacts
+or open `notebooks/02_prediction.ipynb` to run it step by step. Either way, artifacts
 land in `results/<run_id>_<rack>_L<lookback>_H<horizon>/`:
 
 ```
@@ -97,7 +98,7 @@ the whole horizon in one forward pass; safer at very long horizons since
 `rack_forecast/pcnn/` is a separate, physics-consistent model (Adapt-PCNN)
 forecasting return-air temperature, isolated from the power-forecasting code
 above (own results folder, own loaders, no shared config/pipeline). Run it via
-`notebooks/pcnn_mlp.ipynb` — no CLI script exists for it yet.
+`notebooks/05_pcnn_mlp.ipynb` — no CLI script exists for it yet.
 
 ## Launch the dashboard
 
