@@ -58,6 +58,15 @@ required layout.
 
 ## Setup (one time)
 
+Requires Python 3.10 or newer (3.11 recommended). Clone the repo, then pick **one** of the two options.
+
+```bash
+git clone https://github.com/WangDinh/NTU_TDC2_dashboard.git
+cd NTU_TDC2_dashboard
+```
+
+### Option A: conda
+
 ```bash
 conda create -n ntu_cooling python=3.11 -y
 conda activate ntu_cooling
@@ -65,6 +74,22 @@ pip install -r requirements.txt
 pip install torch --index-url https://download.pytorch.org/whl/cu126   # or /cpu for CPU-only
 pip install -e .                                    # editable install of rack_forecast
 ```
+
+### Option B: uv
+
+Install [uv](https://docs.astral.sh/uv/) first, then:
+
+```bash
+uv venv --python 3.11
+# activate: .venv\Scripts\activate (Windows) or source .venv/bin/activate (Linux/macOS)
+uv pip install -r requirements.txt
+uv pip install torch --index-url https://download.pytorch.org/whl/cu126   # or /cpu for CPU-only
+uv pip install -e .
+```
+
+`pyproject.toml` lists no dependencies, so use the `uv pip` commands above rather than `uv sync`.
+
+### Notes
 
 `pip install -e .` makes `import rack_forecast` work from notebooks, scripts, and
 the dashboard regardless of the working directory. `torch` is installed separately
